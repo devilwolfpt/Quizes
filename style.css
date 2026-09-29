@@ -1,0 +1,834 @@
+:root {
+  --salt: #EDF1EC;
+  --panel: #DCE6E2;
+  --paper: #F8FAF7;
+  --deep: #0F3A4D;
+  --tide: #2E8797;
+  --sand: #D8C7A0;
+  --coral: #C4402A;
+  --ok: #1F7A5A;
+  --ok-bg: #DDEFE6;
+  --bad-bg: #F8DDD5;
+  --level: 0;
+  --font-head: "Bricolage Grotesque", "Trebuchet MS", system-ui, sans-serif;
+  --font-body: "Literata", Georgia, "Times New Roman", serif;
+
+  /* Medidas do esquema, usadas pelo painel do quiz */
+  --rail: 120px;
+  --col: 840px;
+  --card: calc(var(--rail) + var(--col));
+  /* Vidro do cartão. Fica quase transparente para o cenário 3D
+     ver-se bem por trás; a legibilidade do texto é tratada por
+     um halo suave (--scrim) que só cobre a zona do texto. */
+  --glass: 0.14;
+  --scrim: 0.82;
+
+  /* Formas das opções, como no Kahoot. Usadas como máscara, por isso
+     só a forma interessa: a cor vem de "currentColor". */
+  --shape-triangle: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2 23.5 21.5H0.5Z'/%3E%3C/svg%3E");
+  --shape-square: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect x='2' y='2' width='20' height='20' rx='2'/%3E%3C/svg%3E");
+  --shape-circle: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='12' cy='12' r='10.5'/%3E%3C/svg%3E");
+  --shape-diamond: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 1 23 12 12 23 1 12Z'/%3E%3C/svg%3E");
+  --shape-star: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 1.6 14.9 8.6 22.4 9.4 16.7 14.4 18.4 21.8 12 18.1 5.6 21.8 7.3 14.4 1.6 9.4 9.1 8.6Z'/%3E%3C/svg%3E");
+  --shape-check: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M20.5 6.5 9.4 17.6 3.5 11.7' fill='none' stroke='black' stroke-width='3.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  --shape-cross: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M5.5 5.5 18.5 18.5M18.5 5.5 5.5 18.5' fill='none' stroke='black' stroke-width='3.4' stroke-linecap='round'/%3E%3C/svg%3E");
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+/* ---------- Fundo ----------
+   Duas camadas sobrepostas: o JS escreve a fotografia nova na
+   camada escondida e passa-a a visível, o que dá um
+   desvanecimento em vez de um salto. */
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  background: #d9cbb0;
+}
+
+.backdrop-layer {
+  position: absolute;
+  inset: 0;
+  background-position: center;
+  background-size: cover;
+  background-repeat: no-repeat;
+  opacity: 0;
+  transition: opacity 0.7s ease;
+}
+
+/* Um véu escuro por cima da foto: as respostas são cores fortes e
+   o cartão é de vidro, por isso o texto do fundo não pode
+   competir com elas. */
+.backdrop::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 58, 77, 0.34);
+}
+
+.backdrop-layer.is-on { opacity: 1; }
+[hidden] { display: none !important; }
+
+html {
+  -webkit-text-size-adjust: 100%;
+  height: 100%;
+  /* A página é uma aplicação de ecrã inteiro: não desliza.
+     Só a lista de revisão do resultado tem scroll próprio. */
+  overflow: hidden;
+}
+
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--salt);
+  color: var(--deep);
+  font-family: var(--font-body);
+  font-size: 1.0625rem;
+  line-height: 1.65;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ---------- Cenário 3D ----------
+   Canvas fixo em ecrã inteiro, por trás do painel do quiz.
+   Fica escondido até o modelo estar pronto (data-ocean="ready")
+   para o carregamento dos ~47 MB não mudar o aspecto da página;
+   se falhar (data-ocean="off") volta ao desenho só com CSS. */
+.ocean-canvas {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 0;
+  display: block;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 1.2s ease;
+}
+
+html[data-ocean="ready"] .ocean-canvas { opacity: 1; }
+
+.ocean-status {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 6;
+  margin: 0;
+  max-width: min(60vw, 420px);
+  padding: 9px 18px;
+  font-family: var(--font-head);
+  font-size: 0.82rem;
+  font-weight: 600;
+  line-height: 1.3;
+  text-align: right;
+  color: var(--deep);
+  background: rgba(248, 250, 247, 0.94);
+  border: 2px solid var(--deep);
+  border-radius: 999px;
+  box-shadow: 0 6px 20px rgba(15, 58, 77, 0.18);
+  transition: opacity 0.6s ease, transform 0.6s ease;
+}
+
+.ocean-status:empty { display: none; }
+
+.ocean-status.is-done {
+  opacity: 0;
+  transform: translateY(12px);
+  pointer-events: none;
+}
+
+html[data-ocean="off"] .ocean-status {
+  right: 50%;
+  bottom: auto;
+  top: 12px;
+  transform: translateX(50%);
+  text-align: center;
+}
+
+html[data-ocean="off"] .ocean-status.is-done { transform: translate(50%, 12px); }
+
+/* Barra de progresso do carregamento (definida por scene3d.js). */
+.ocean-status[style*="--progress"]::after {
+  content: "";
+  display: block;
+  height: 4px;
+  margin-top: 7px;
+  border-radius: 2px;
+  background: var(--panel);
+  background-image: linear-gradient(90deg, var(--tide) var(--progress, 0%), transparent var(--progress, 0%));
+}
+
+/* ---------- Painel do quiz ----------
+   Cartão de vidro centrado: o cenário 3D vê-se à volta e também
+   através do painel (com desfoque), mantendo o texto legível. */
+.app {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  grid-template-columns: var(--rail) minmax(0, 1fr);
+  width: min(100% - 48px, var(--card));
+  height: calc(100dvh - 48px);
+  margin: 24px auto;
+  background: rgba(248, 250, 247, var(--glass));
+  -webkit-backdrop-filter: blur(2px) saturate(1.12);
+  backdrop-filter: blur(2px) saturate(1.12);
+  border: 2px solid rgba(15, 58, 77, 0.5);
+  border-radius: 18px;
+  box-shadow: 0 20px 56px rgba(15, 58, 77, 0.28);
+  overflow: hidden;
+}
+
+/* Sem suporte a dvh (navegadores antigos) usamos vh. */
+@supports not (height: 100dvh) {
+  .app { height: calc(100vh - 48px); }
+}
+
+/* ---------- Ecrã de introdução ----------
+   Sem cartão e sem marégrafo: o cenário e o título 3D "welcome"
+   ocupam o ecrã todo, com o botão "Começar" em baixo. */
+html[data-screen="intro"] .app {
+  grid-template-columns: 1fr;
+  background: none;
+  border: 0;
+  box-shadow: none;
+  border-radius: 0;
+}
+
+html[data-screen="intro"] .gauge,
+html[data-screen="intro"] .content::before { display: none; }
+
+html[data-screen="intro"] .content {
+  max-width: none;
+  padding: 0;
+  background: none;
+}
+
+html[data-screen="intro"] .screen-intro {
+  display: grid;
+  /* Uma linha só, centrada: o título, o subtítulo e o botão ficam
+     empilhados ao meio do ecrã em vez de esticados. */
+  grid-template-rows: none;
+  align-content: center;
+  justify-items: center;
+  align-items: center;
+  gap: 8px;
+  padding: 0 24px 6vh;
+  text-align: center;
+  pointer-events: none;
+}
+
+/* Sobre a fotografia não há cartão nem halo: a legibilidade vem
+   da sombra, que desenha um contorno suave em volta das letras. */
+html[data-screen="intro"] h1,
+html[data-screen="intro"] .lead {
+  color: #fff;
+  text-shadow: 0 2px 4px rgba(15, 58, 77, 0.55), 0 0 18px rgba(15, 58, 77, 0.75),
+    0 0 44px rgba(15, 58, 77, 0.6);
+}
+
+/* Sem o cartão, o título é o elemento principal do ecrã: grande,
+   mas com uma altura de linha que não o estica até ao alto todo. */
+html[data-screen="intro"] h1 {
+  max-width: 16em;
+  margin: 0;
+  line-height: 1.04;
+}
+
+html[data-screen="intro"] .lead { margin: 0 0 18px; }
+
+html[data-screen="intro"] .intro-skip {
+  pointer-events: auto;
+  box-shadow: 0 10px 34px rgba(15, 58, 77, 0.45);
+}
+
+/* ---------- Marégrafo ---------- */
+.gauge {
+  align-self: stretch;
+  padding: 40px 0;
+  display: flex;
+  justify-content: center;
+  /* Sobre o vidro do cartão, só um tom: o desfoque já vem de cima. */
+  background: rgba(220, 230, 226, 0.55);
+  border-right: 2px solid rgba(15, 58, 77, 0.5);
+}
+
+.gauge-body {
+  display: flex;
+  gap: 10px;
+  height: 100%;
+}
+
+.tube {
+  position: relative;
+  width: 34px;
+  height: 100%;
+  border: 2px solid var(--deep);
+  border-radius: 17px;
+  background: var(--paper);
+  overflow: hidden;
+}
+
+.water {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: calc(var(--level) * 100%);
+  background: var(--tide);
+  transition: height 0.9s cubic-bezier(0.3, 0.7, 0.2, 1);
+}
+
+.water::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -11px;
+  height: 12px;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 12'%3E%3Cpath d='M0 6 Q10 0 20 6 T40 6 V12 H0Z' fill='%232E8797'/%3E%3C/svg%3E") repeat-x;
+  background-size: 40px 12px;
+  animation: drift 3.2s linear infinite;
+}
+
+.gauge[data-empty] .water::before { display: none; }
+
+@keyframes drift {
+  to { background-position-x: 40px; }
+}
+
+.ticks {
+  position: relative;
+  width: 30px;
+  height: 100%;
+}
+
+.tick {
+  position: absolute;
+  left: 0;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  transform: translateY(50%);
+  font-family: var(--font-head);
+  font-weight: 600;
+  font-size: 0.8rem;
+  line-height: 1;
+}
+
+.tick::before {
+  content: "";
+  width: 9px;
+  height: 2px;
+  background: var(--deep);
+}
+
+/* ---------- Conteúdo ----------
+   Coluna única que ocupa a altura do cartão. Cada ecrã é uma caixa
+   flexível; nada transborda, por isso a página não tem scroll. */
+.content {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  padding: 36px 44px 28px;
+  max-width: var(--col);
+}
+
+.screen {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+/* Halo suave por trás do conteúdo. É este halo — e não o cartão
+   inteiro — que mantém o texto legível, deixando o resto do
+   cenário nitidamente visível. */
+.screen::after {
+  content: "";
+  position: absolute;
+  inset: -8% -10%;
+  z-index: 0;
+  pointer-events: none;
+  background: radial-gradient(
+    66% 70% at 50% 48%,
+    rgba(248, 250, 247, var(--scrim)) 0%,
+    rgba(248, 250, 247, var(--scrim)) 62%,
+    rgba(248, 250, 247, calc(var(--scrim) * 0.55)) 84%,
+    rgba(248, 250, 247, 0) 100%
+  );
+}
+
+.screen > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* Na introdução não há cartão nem halo: só o cenário e o título. */
+html[data-screen="intro"] .screen::after { display: none; }
+
+h1, h2 {
+  font-family: var(--font-head);
+  line-height: 1.08;
+  letter-spacing: -0.02em;
+  margin: 0 0 18px;
+  outline: none;
+  /* Rede de segurança: mesmo com o cartão quase transparente,
+     o texto não se perde sobre as zonas claras do deserto. */
+  text-shadow: 0 1px 0 rgba(248, 250, 247, 0.9), 0 0 10px rgba(248, 250, 247, 0.75);
+}
+
+h1 {
+  font-weight: 800;
+  font-size: clamp(2rem, 4.6vw, 3.2rem);
+}
+
+h2 {
+  font-weight: 800;
+  font-size: clamp(1.45rem, 2.6vw, 1.9rem);
+  max-width: 26em;
+}
+
+.lead {
+  max-width: 34em;
+  margin: 0 0 22px;
+}
+
+.counter {
+  margin: 0 0 8px;
+  font-family: var(--font-head);
+  font-weight: 600;
+  color: var(--tide);
+}
+
+.credits {
+  margin: 26px 0 0;
+  font-size: 0.9rem;
+  opacity: 0.75;
+}
+
+.credits-model {
+  margin-top: 8px;
+  max-width: 40em;
+  font-size: 0.75rem;
+  line-height: 1.4;
+}
+
+.credits-model a {
+  color: inherit;
+}
+
+/* ---------- Botões ---------- */
+.btn {
+  font: inherit;
+  font-family: var(--font-head);
+  font-weight: 600;
+  font-size: 1.05rem;
+  padding: 14px 28px;
+  border-radius: 999px;
+  border: 2px solid var(--deep);
+  background: transparent;
+  color: var(--deep);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.btn.primary {
+  background: var(--deep);
+  color: var(--salt);
+}
+
+.btn.primary:hover { background: var(--tide); border-color: var(--tide); }
+
+button:focus-visible {
+  outline: 3px solid var(--tide);
+  outline-offset: 3px;
+}
+
+/* ---------- Imagens e GIFs ----------
+   A altura é limitada em relação ao ecrã (vh) para o conteúdo
+   caber sempre no cartão, sem obrigar a deslizar. */
+.media {
+  margin: 0;
+  min-height: 0;
+  align-self: center;
+}
+
+.media img {
+  display: block;
+  width: 100%;
+  max-height: 34vh;
+  height: auto;
+  aspect-ratio: 690 / 388;
+  object-fit: cover;
+  background: rgba(220, 230, 226, 0.7);
+  border: 2px solid rgba(15, 58, 77, 0.5);
+  border-radius: 12px;
+}
+
+.media figcaption {
+  margin-top: 8px;
+  font-size: 0.8rem;
+  line-height: 1.35;
+  opacity: 0.85;
+}
+
+/* ---------- Duas colunas: texto à esquerda, imagem à direita ---------- */
+.screen-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
+  gap: 30px;
+  align-items: stretch;
+}
+
+/* O halo acompanha a coluna do texto, deixando a imagem (que tem
+   fundo próprio) fora dele. */
+.screen-split::after {
+  background: radial-gradient(
+    52% 70% at 33% 50%,
+    rgba(248, 250, 247, var(--scrim)) 0%,
+    rgba(248, 250, 247, var(--scrim)) 60%,
+    rgba(248, 250, 247, calc(var(--scrim) * 0.5)) 84%,
+    rgba(248, 250, 247, 0) 100%
+  );
+}
+
+.split-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* Sem imagem, o texto ocupa a largura toda. */
+#quiz:not(.has-media) { grid-template-columns: minmax(0, 1fr); }
+
+/* O cronómetro ocupa a primeira linha, acima das duas colunas. */
+#quiz { grid-template-rows: auto minmax(0, 1fr); }
+
+/* Ondas decorativas em CSS no topo do conteúdo */
+.content::before {
+  content: "";
+  display: block;
+  flex: none;
+  height: 12px;
+  margin: -20px 0 22px;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 14'%3E%3Cpath d='M0 7 Q10 0 20 7 T40 7' fill='none' stroke='%232E8797' stroke-width='2.5'/%3E%3C/svg%3E") repeat-x;
+  background-size: 40px 14px;
+  animation: drift 3.2s linear infinite;
+}
+
+/* ---------- Cronómetro ----------
+   Barra no topo do ecrã das perguntas, como no Kahoot: o tempo
+   esgota a barra e muda de cor (verde -> âmbar -> vermelho). */
+.timer {
+  --t: 1;
+  --tc: #1b8038;
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 16px;
+  border: 2px solid var(--tc);
+  border-radius: 999px;
+  background: rgba(248, 250, 247, 0.7);
+}
+
+.timer-icon {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  background: var(--tc);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M9 1h6v2.2H9zM12 4a8.5 8.5 0 1 1 0 17 8.5 8.5 0 0 1 0-17zm0 3.6a1.1 1.1 0 0 0-1.1 1.1V12c0 .4.2.8.5 1l3.2 2a1.1 1.1 0 0 0 1.2-1.9l-2.7-1.7V8.7A1.1 1.1 0 0 0 12 7.6z'/%3E%3C/svg%3E") no-repeat center / contain;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M9 1h6v2.2H9zM12 4a8.5 8.5 0 1 1 0 17 8.5 8.5 0 0 1 0-17zm0 3.6a1.1 1.1 0 0 0-1.1 1.1V12c0 .4.2.8.5 1l3.2 2a1.1 1.1 0 0 0 1.2-1.9l-2.7-1.7V8.7A1.1 1.1 0 0 0 12 7.6z'/%3E%3C/svg%3E") no-repeat center / contain;
+}
+
+.timer-time {
+  font-family: var(--font-head);
+  font-weight: 800;
+  font-size: 1.3rem;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  color: var(--tc);
+  min-width: 2ch;
+  text-align: right;
+}
+
+.timer-track {
+  flex: 1;
+  height: 12px;
+  border-radius: 6px;
+  background: rgba(15, 58, 77, 0.14);
+  overflow: hidden;
+}
+
+.timer-fill {
+  display: block;
+  height: 100%;
+  width: 100%;
+  border-radius: 6px;
+  background: var(--tc);
+  transform: scaleX(var(--t));
+  transform-origin: left center;
+}
+
+.timer-label {
+  font-family: var(--font-head);
+  font-weight: 600;
+  font-size: 0.8rem;
+  color: var(--deep);
+  opacity: 0.7;
+}
+
+.timer.is-warn { --tc: #c47a06; }
+.timer.is-danger { --tc: #c62828; }
+.timer.is-danger .timer-icon { animation: pulso 1s ease-in-out infinite; }
+
+.timer.is-done { opacity: 0.45; }
+
+@keyframes pulso {
+  50% { opacity: 0.35; }
+}
+/* ---------- Opções (à maneira do Kahoot) ----------
+   Botão grande, cor sólida, forma geométrica à esquerda e um "aro"
+   escuro por baixo que afunda quando se carrega. Ao responder, a
+   correcta fica verde com visto e a escolhida errada fica vermelha
+   com cruz, como no Kahoot. */
+.options {
+  display: grid;
+  gap: 14px;
+  margin: 20px 0 18px;
+}
+
+.option {
+  --c: #2472e0;
+  --shade: #16509c;
+  --ink: #ffffff;
+  --shape: var(--shape-circle);
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  width: 100%;
+  text-align: left;
+  font-family: var(--font-head);
+  font-size: 1.12rem;
+  font-weight: 600;
+  line-height: 1.3;
+  padding: 16px 22px;
+  min-height: 66px;
+  color: var(--ink);
+  background: var(--c);
+  border: 0;
+  border-radius: 10px;
+  cursor: pointer;
+  box-shadow: 0 7px 0 var(--shade);
+  transition: transform 0.1s ease, box-shadow 0.1s ease,
+    background 0.3s ease, opacity 0.3s ease;
+}
+
+.option[data-hue="0"] {
+  --c: #e22b2b; --shade: #a11f1f; --ink: #fff; --shape: var(--shape-triangle);
+}
+.option[data-hue="1"] {
+  --c: #2472e0; --shade: #16509c; --ink: #fff; --shape: var(--shape-square);
+}
+.option[data-hue="2"] {
+  --c: #ffc600; --shade: #b38900; --ink: #241a00; --shape: var(--shape-star);
+}
+.option[data-hue="3"] {
+  --c: #1b8038; --shade: #115a27; --ink: #fff; --shape: var(--shape-diamond);
+}
+
+/* Forma geométrica (triângulo, quadrado, círculo, losango, estrela).
+   Sempre branca, como no Kahoot: nas opções de cor clara a tinta do
+   texto é escura, mas a forma mantém-se branca. */
+.option .mark {
+  flex: none;
+  width: 34px;
+  height: 34px;
+  background: #fff;
+  -webkit-mask: var(--shape) no-repeat center / contain;
+  mask: var(--shape) no-repeat center / contain;
+}
+
+.option:hover:not(:disabled) { transform: translateY(-2px); }
+
+.option:active:not(:disabled) {
+  transform: translateY(6px);
+  box-shadow: 0 1px 0 var(--shade);
+}
+
+.option:disabled { cursor: default; }
+
+.option.is-dim { opacity: 0.4; }
+
+.option.is-correct {
+  --c: #1b8038;
+  --shade: #115a27;
+  --ink: #fff;
+  --shape: var(--shape-check);
+  transform: translateY(6px);
+  box-shadow: 0 1px 0 var(--shade);
+}
+
+.option.is-wrong {
+  --c: #e22b2b;
+  --shade: #a11f1f;
+  --ink: #fff;
+  --shape: var(--shape-cross);
+  transform: translateY(6px);
+  box-shadow: 0 1px 0 var(--shade);
+}
+/* ---------- Feedback ---------- */
+.feedback {
+  max-width: 36em;
+  margin: 0 0 16px;
+  font-size: 0.95rem;
+  min-height: 0;
+}
+
+.feedback strong {
+  display: block;
+  font-family: var(--font-head);
+  font-size: 1.08rem;
+  margin-bottom: 2px;
+}
+
+.feedback .good { color: var(--ok); }
+.feedback .bad { color: var(--coral); }
+.feedback p { margin: 0; }
+
+/* ---------- Resultado ---------- */
+.score {
+  margin: 0 0 10px;
+  font-family: var(--font-head);
+  font-weight: 800;
+  font-size: clamp(2.8rem, 8vw, 4.4rem);
+  line-height: 1;
+  color: var(--tide);
+}
+
+/* A lista de revisão é a única zona com scroll próprio: pode ter
+   até 10 perguntas e não cabe em ecrãs baixos. A página não desliza. */
+.review {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  margin: 4px 0 20px;
+  max-width: 40em;
+  padding-right: 6px;
+}
+
+.review h3 {
+  font-family: var(--font-head);
+  font-size: 1.1rem;
+  margin: 0 0 10px;
+}
+
+.review ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.review li {
+  padding: 12px 0;
+  border-top: 2px solid rgba(15, 58, 77, 0.2);
+  font-size: 0.92rem;
+  line-height: 1.5;
+}
+
+.review li p { margin: 0 0 4px; }
+.review .q { font-weight: 600; }
+.review .a { color: var(--ok); }
+
+/* ---------- Ecrãs baixos ----------
+   Em portáteis com pouca altura (≤860px) apertamos o conteúdo para
+   que tudo caiba no cartão e a página nunca precise de deslizar. */
+@media (max-height: 860px) {
+  .content { padding: 28px 40px 22px; }
+  .content::before { height: 10px; margin: -14px 0 16px; }
+  h1 { font-size: clamp(1.8rem, 4.2vw, 2.7rem); }
+  h2 { font-size: clamp(1.3rem, 2.3vw, 1.65rem); }
+  .lead { margin-bottom: 18px; }
+  .media img { max-height: 28vh; }
+  .options { margin: 14px 0 12px; }
+  .option { padding: 9px 14px; min-height: 48px; }
+  .feedback { margin-bottom: 12px; font-size: 0.92rem; }
+  .credits { margin-top: 18px; }
+  .score { font-size: clamp(2.4rem, 7vw, 3.6rem); }
+  .review { margin-bottom: 14px; }
+  .btn { padding: 12px 24px; }
+}
+
+/* ---------- Telemóvel ---------- */
+@media (max-width: 720px) {
+  .app {
+    grid-template-columns: 1fr;
+    width: min(100% - 24px, var(--card));
+    height: calc(100dvh - 24px);
+    margin: 12px auto;
+    border-radius: 14px;
+  }
+
+  .content { padding: 24px 20px 18px; }
+
+  .gauge {
+    padding: 12px 20px;
+    border-right: 0;
+    border-bottom: 2px solid var(--deep);
+  }
+
+  .gauge-body { width: 100%; height: auto; }
+
+  .tube {
+    width: 100%;
+    height: 18px;
+    border-radius: 9px;
+  }
+
+  .water {
+    top: 0;
+    right: auto;
+    width: calc(var(--level) * 100%);
+    height: 100%;
+    transition: width 0.9s cubic-bezier(0.3, 0.7, 0.2, 1);
+  }
+
+  .water::before { display: none; }
+  .ticks { display: none; }
+
+  .media img { max-height: 22vh; }
+  .option { font-size: 1rem; }
+  html[data-screen="intro"] .screen-intro { padding-bottom: 8vh; }
+
+  /* Sem espaço para duas colunas: a imagem fica por cima do texto. */
+  .screen-split { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+  #quiz .media { order: -1; }
+}
+
+@supports not (height: 100dvh) {
+  @media (max-width: 720px) {
+    .app { height: calc(100vh - 24px); }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; }
+}

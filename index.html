@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Quiz: A subida do nível médio das águas do mar</title>
+  <meta name="description" content="Quiz de 10 perguntas sobre a subida do nível médio das águas do mar: causas, evidências, impactos e soluções.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Literata:opsz,wght@7..72,400;7..72,600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+
+  <!-- three.js local, sem CDN (ver vendor/three/LICENSE)
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "./vendor/three/build/three.module.min.js"
+      }
+    }
+  </script>
+  -->
+</head>
+<body>
+
+  <!-- Fundos: dois campos alternados, para se trocarem com
+       desvanecimento em vez de aparecer um de repente. -->
+  <div class="backdrop" aria-hidden="true">
+    <div class="backdrop-layer" id="bg-a"></div>
+    <div class="backdrop-layer" id="bg-b"></div>
+  </div>
+
+  <!-- Cenário 3D a ecrã inteiro, por trás do painel do quiz.
+       Puramente decorativo: o quiz funciona sem ele.
+  <canvas class="ocean-canvas" id="ocean-canvas" aria-hidden="true"></canvas>
+  <p class="ocean-status" id="ocean-status" aria-hidden="true"></p>
+  -->
+
+  <div class="app">
+
+    <!-- Marégrafo: a água sobe à medida que respondes -->
+    <aside class="gauge" id="gauge" data-empty aria-hidden="true">
+      <div class="gauge-body">
+        <div class="tube"><div class="water"></div></div>
+        <div class="ticks" id="ticks"></div>
+      </div>
+    </aside>
+
+    <main class="content">
+
+      <!-- Introdução: o título sobre o fundo, à espera de se passar
+           sozinho ao ecrã seguinte (o botão salta a espera). -->
+      <section id="intro" class="screen screen-intro" aria-labelledby="intro-title">
+        <h1 id="intro-title" tabindex="-1">A subida do nível médio das águas do mar</h1>
+        <p class="lead">Quiz de 10 perguntas</p>
+        <button class="btn primary intro-skip" id="intro-skip" type="button">Começar</button>
+      </section>
+
+      <!-- Início -->
+      <section id="start" class="screen screen-split" aria-labelledby="start-title" hidden>
+        <div class="split-text">
+          <h1 id="start-title" tabindex="-1">A subida do nível médio das águas do mar</h1>
+          <p class="lead">Os oceanos absorvem mais de 90% do excesso de calor do planeta, e o nível do mar já não é constante. Responde a 10 perguntas e vê quanto sabes sobre as causas, os impactos e as soluções.</p>
+          <button class="btn primary" id="start-btn" type="button">Começar o quiz</button>
+          <p class="credits">Trabalho de Ian, Tomás, Pedro E. e Isabele</p>
+          <!-- Créditos dos modelos 3D (usados quando havia cenário 3D):
+          <p class="credits credits-model">
+            Modelos 3D do Sketchfab, sob licença
+            <a href="https://creativecommons.org/licenses/by/4.0/" rel="noopener">CC BY 4.0</a>:
+            cenário <a href="https://sketchfab.com/3d-models/camels-respite-a7f8fba0bf4b41acb3bf77b8f9c8cd9e" rel="noopener">“Camel’s Respite”</a>
+            de Baue Franco e título <a href="https://sketchfab.com/3d-models/3d-text-model-welcome-dc228be6fc0c4e1aa3cd95078ba01a06" rel="noopener">“3D Text Model - Welcome”</a>
+            de FredTiger2024. three.js com licença MIT.
+          </p>
+          -->
+        </div>
+        <figure class="media hero">
+          <img src="https://commons.wikimedia.org/wiki/Special:FilePath/Sea_level_rise_trend_2022.gif"
+               alt="Animação da NASA com as tendências do nível médio do mar entre 1993 e 2022, medidas por satélite"
+               width="690" height="388" decoding="async">
+          <figcaption>Animação: tendências do nível do mar, 1993–2022, medidas por satélite. Fonte: NASA (domínio público), via Wikimedia Commons.</figcaption>
+        </figure>
+      </section>
+
+      <!-- Perguntas -->
+      <section id="quiz" class="screen screen-split" aria-labelledby="question-title" hidden>
+        <div class="timer" id="timer" aria-hidden="true">
+          <span class="timer-icon"></span>
+          <span class="timer-time" id="timer-time">30</span>
+          <span class="timer-track"><span class="timer-fill"></span></span>
+          <span class="timer-label">segundos</span>
+        </div>
+        <div class="split-text">
+          <p class="counter" id="counter"></p>
+          <h2 id="question-title" tabindex="-1"></h2>
+          <div class="options" id="options" role="group" aria-labelledby="question-title"></div>
+          <div class="feedback" id="feedback" role="status" aria-live="polite"></div>
+          <button class="btn primary" id="next-btn" type="button" hidden>Seguinte</button>
+        </div>
+        <figure class="media" id="media" hidden>
+          <img id="media-img" alt="" width="690" height="388" decoding="async">
+          <figcaption id="media-cap"></figcaption>
+        </figure>
+        <p class="visually-hidden" id="timer-aviso" role="status" aria-live="polite"></p>
+      </section>
+
+      <!-- Resultado -->
+      <section id="result" class="screen" aria-labelledby="result-title" hidden>
+        <h2 id="result-title" tabindex="-1"></h2>
+        <p class="score" id="score"></p>
+        <p class="lead" id="result-msg"></p>
+        <div id="review" class="review"></div>
+        <button class="btn primary" id="restart-btn" type="button">Repetir o quiz</button>
+      </section>
+
+    </main>
+  </div>
+  <script src="script.js"></script>
+  <!-- Módulo do cenário 3D (three.js): ver scene3d.js, desactivado
+       enquanto o fundo for feito com as fotografias.
+  <script type="module" src="scene3d.js"></script>
+  -->
+</body>
+</html>
